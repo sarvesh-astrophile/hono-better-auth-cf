@@ -5,7 +5,7 @@ export const todos = sqliteTable("todos", {
   id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
-  description: text("description").notNull(),
+  description: text("description"),
   completed: integer("completed", { mode: "boolean" }).notNull().$defaultFn(() => false),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),

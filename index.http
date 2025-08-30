@@ -1,1 +1,28 @@
-http://localhost:8787/
+@access_token = 9lorIER5VcozeSrLw8SoRCL9yAHCR3g1 
+### hono server
+GET http://localhost:8787/
+
+### get session
+POST http://localhost:8787/api/auth/sign-in/email
+Content-Type: application/json
+
+{
+  "email": "sarvesh9302@gmail.com",
+  "password": "password123",
+  "callbackURL": "",
+  "rememberMe": true
+}
+
+### get todos
+GET http://localhost:8787/api/todos
+Authorization: Bearer {{access_token}}
+
+###  create todo
+POST http://localhost:8787/api/todos
+Content-Type: application/json
+
+{
+    "title": "Test Todo",
+    "description": "This is a test todo",
+    "completed": false
+}
