@@ -10,6 +10,7 @@
     "db:migrate:prod": "wrangler d1 migrations apply hono_better_auth_cf --remote",
     "db:check": "drizzle-kit check",
     "db:studio": "drizzle-kit studio",
+    "open-auth-docs": "open-cli http://localhost:8787/api/auth/reference",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "@cloudflare/workers-types": "^4.20250830.0",
     "@types/node": "^24.3.0",
     "drizzle-kit": "^0.31.4",
+    "open-cli": "^8.0.0",
     "tsx": "^4.20.5",
     "wrangler": "^4.33.1"
   }

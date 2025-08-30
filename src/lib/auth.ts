@@ -1,16 +1,29 @@
 import { db } from "@/db/db";
+import { sendEmail } from "@/lib/email";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { openAPI } from "better-auth/plugins";
-import type { D1Database } from "@cloudflare/workers-types";
+import { env } from "cloudflare:workers";
 
-export function createAuth(d1Database: D1Database) {
+export function createAuth() {
   return betterAuth({
-    database: drizzleAdapter(db(d1Database), {
+    database: drizzleAdapter(db(), {
       provider: "sqlite"
     }),
+    baseUrl: env.BETTER_AUTH_URL,
     emailAndPassword: {
       enabled: true,
+      requireEmailVerification: true,
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendVerificationEmail: async ({ user, url, token }, request) => {
+        await sendEmail({
+          to: user.email,
+          subject: "Verify your email address",
+          text: `Click the link to verify your email address: ${url}`,
+        });
+      },
     },
     plugins: [
       openAPI(),

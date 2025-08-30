@@ -8,6 +8,13 @@
       "when": 1756525808828,
       "tag": "0000_whole_tag",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1756570613835,
+      "tag": "0001_soft_praxagora",
+      "breakpoints": true
     }
   ]
 }
