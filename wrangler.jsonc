@@ -7,7 +7,8 @@
 		{
 			"binding": "hono_better_auth_cf",
 			"database_name": "hono-better-auth-cf",
-			"database_id": "681d551e-9b58-4ed0-8ffa-1d39eb0347df"
+			"database_id": "681d551e-9b58-4ed0-8ffa-1d39eb0347df",
+			"migrations_dir": "drizzle/migrations"
 		}
 	]
 	// "compatibility_flags": [
