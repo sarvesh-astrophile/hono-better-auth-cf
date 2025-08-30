@@ -20,7 +20,7 @@ alwaysApply: true
 - **Database:** Cloudflare D1 (SQLite-based serverless database)
 - **ORM:** Drizzle ORM v0.44.5 (TypeScript ORM with excellent TypeScript support)
 - **Language:** TypeScript with ESNext target
-- **Package Manager:** bun (with bun.lock present, suggesting bun compatibility)
+- **Package Manager:** bun (primary package manager)
 
 ### Development Tools
 - **Wrangler v4.33.1:** Cloudflare Workers CLI for development and deployment
@@ -33,13 +33,16 @@ alwaysApply: true
 ```
 hono-better-auth-cf/
 ├── src/
-│   ├── index.ts              # Main application entry point with API endpoints
+│   ├── index.ts              # Main application entry point with Better Auth integration
+│   ├── lib/
+│   │   └── auth.ts          # Better Auth configuration and setup
 │   └── db/
 │       ├── db.ts            # Database connection setup
-│       └── schema.ts        # Database schema definitions
+│       └── schema.ts        # Database schema definitions (Better Auth tables)
 ├── drizzle/
 │   └── migrations/          # Database migration files
 │       ├── 0000_whole_tag.sql # Initial database schema migration
+│       ├── 0001_modern_amazoness.sql # Additional migration
 │       └── meta/            # Migration metadata
 ├── .cursor/
 │   └── rules/
@@ -51,7 +54,10 @@ hono-better-auth-cf/
 ├── worker-configuration.d.ts # Generated Cloudflare bindings types
 ├── index.http              # HTTP test file
 ├── LICENSE                 # MIT License
-└── README.md               # Basic project documentation
+├── README.md               # Basic project documentation
+├── AGENTS.md               # Project documentation
+├── Sensei.md               # Additional documentation
+└── Sensei.pdf              # PDF documentation
 ```
 
 ## Database Configuration
@@ -64,12 +70,69 @@ hono-better-auth-cf/
 
 ### Current Schema
 ```typescript
-// src/db/schema.ts
-export const usersTable = sqliteTable("users_table", {
-  id: int().primaryKey({ autoIncrement: true }),
-  name: text().notNull(),
-  age: int().notNull(),
-  email: text().notNull().unique(),
+// src/db/schema.ts - Better Auth tables
+export const user = sqliteTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" })
+    .$defaultFn(() => false)
+    .notNull(),
+  image: text("image"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+export const session = sqliteTable("session", {
+  id: text("id").primaryKey(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  token: text("token").notNull().unique(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+});
+
+export const account = sqliteTable("account", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  providerId: text("provider_id").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  idToken: text("id_token"),
+  accessTokenExpiresAt: integer("access_token_expires_at", {
+    mode: "timestamp",
+  }),
+  refreshTokenExpiresAt: integer("refresh_token_expires_at", {
+    mode: "timestamp",
+  }),
+  scope: text("scope"),
+  password: text("password"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export const verification = sqliteTable("verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
 });
 ```
 
@@ -84,17 +147,18 @@ export const db = (d1: D1Database) => {
 ## Configuration Files
 
 ### Wrangler Configuration (wrangler.jsonc)
-- **Compatibility Date:** 2025-08-30
+- **Compatibility Date:** 2024-09-26
 - **Main Entry:** src/index.ts
+- **Node.js Compatibility:** Enabled with nodejs_compat flag
 - **D1 Database:** Configured with binding and migration directory
-- **Commented Options:** Node.js compatibility, environment variables, KV namespaces, R2 buckets, AI bindings, observability
+- **Commented Options:** Environment variables, KV namespaces, R2 buckets, AI bindings, observability
 
 ### Drizzle Configuration (drizzle.config.ts)
-- **Output Directory:** ./drizzle/migrations
+- **Output Directory:** ./drizzle
 - **Schema Source:** ./src/db/schema.ts
 - **Dialect:** SQLite with D1 HTTP driver
 - **Casing:** snake_case (consistent with database naming)
-- **Credentials:** Placeholder values for development
+- **Credentials:** Environment variables for Cloudflare account ID, database ID, and D1 token
 
 ### TypeScript Configuration (tsconfig.json)
 - **Target:** ESNext
@@ -122,43 +186,65 @@ export const db = (d1: D1Database) => {
 ## Recent Changes & Current API
 
 ### Latest Updates
-- **Database Integration:** Added database connection and basic CRUD operations
-- **Migration Setup:** Created initial database migration with users table
-- **API Endpoints:** Implemented user management endpoints
+- **Better Auth Integration:** Fully integrated Better Auth with Hono application
+- **Database Schema:** Updated to Better Auth standard tables (user, session, account, verification)
+- **Authentication Routes:** Implemented `/api/auth/**` endpoints for authentication
+- **Migration Setup:** Created database migrations for Better Auth tables
 - **Drizzle Configuration:** Added drizzle.config.ts for database management
 
 ### Current API Endpoints
 ```typescript
 // Main application entry point (src/index.ts)
-GET  /              // Returns "Hello Hono!"
-GET  /users         // Retrieves all users from database
-GET  /add-users     // Inserts a sample user (John Doe)
+GET  /                    // Returns "Hello Hono!"
+POST/GET /api/auth/**     // Better Auth authentication endpoints
+```
+
+### Better Auth Configuration
+```typescript
+// src/lib/auth.ts
+export function createAuth(d1Database: D1Database) {
+  return betterAuth({
+    database: drizzleAdapter(db(d1Database), {
+      provider: "sqlite"
+    }),
+    emailAndPassword: {
+      enabled: true,
+    },
+    plugins: [
+      openAPI(),
+    ],
+  });
+}
 ```
 
 ### Database Migration Status
-- **Migration File:** `drizzle/migrations/0000_whole_tag.sql`
-- **Schema:** Creates `users_table` with id, name, age, email fields
-- **Index:** Unique index on email field
-- **Status:** Generated but not yet applied to databases
+- **Migration Files:** 
+  - `drizzle/migrations/0000_whole_tag.sql` - Initial migration
+  - `drizzle/migrations/0001_modern_amazoness.sql` - Additional migration
+- **Schema:** Better Auth tables (user, session, account, verification)
+- **Status:** Generated and ready for application
 
 ## Current Implementation Status
 
 ### Completed
 - ✅ Basic Hono application setup
 - ✅ Drizzle ORM integration with D1
-- ✅ Database schema definition (users table)
+- ✅ Better Auth integration with Hono
+- ✅ Database schema definition (Better Auth tables)
 - ✅ Cloudflare Workers configuration
 - ✅ TypeScript setup with proper types
 - ✅ Development environment configuration
-- ✅ Database migrations setup with initial migration
-- ✅ Basic API endpoints for user management
+- ✅ Database migrations setup with Better Auth schema
+- ✅ Authentication API endpoints (`/api/auth/**`)
 - ✅ Drizzle Kit configuration for database management
+- ✅ Better Auth configuration with email/password authentication
+- ✅ OpenAPI plugin integration
 
 ### In Progress / Next Steps
-- 🔄 Better Auth integration (not yet implemented in main app)
-- 🔄 Authentication routes and middleware
-- 🔄 User authentication flow implementation
 - 🔄 Apply database migrations to local/production environments
+- 🔄 Test authentication endpoints
+- 🔄 Implement additional authentication providers (OAuth, social login)
+- 🔄 Add user management and profile features
 
 ## Development Environment
 
@@ -178,7 +264,8 @@ GET  /add-users     // Inserts a sample user (John Doe)
 - Modern authentication library with TypeScript support
 - Integrates well with Drizzle ORM
 - Supports multiple authentication strategies
-- **Note:** Not yet integrated into the main application
+- **Status:** Fully integrated with email/password authentication enabled
+- **Features:** OpenAPI plugin, session management, user verification
 
 ### Hono (v4.9.5)
 - Lightweight web framework optimized for edge runtimes
@@ -186,8 +273,7 @@ GET  /add-users     // Inserts a sample user (John Doe)
 - Fast and efficient for serverless environments
 - **Current Endpoints:**
   - `GET /` - Basic "Hello Hono!" endpoint
-  - `GET /users` - Retrieve all users from database
-  - `GET /add-users` - Insert a sample user into database
+  - `POST/GET /api/auth/**` - Better Auth authentication endpoints
 
 ### Drizzle ORM (v0.44.5)
 - Type-safe database ORM
@@ -213,10 +299,10 @@ interface CloudflareBindings {
 
 ### Immediate Goals
 1. **Apply Database Migrations** - Run migrations on local and production D1 databases
-2. **Integrate Better Auth** - Set up authentication middleware and routes
-3. **User Management** - Implement user registration, login, and session management
-4. **API Endpoints** - Create authentication-related API endpoints
-5. **Test Database Operations** - Verify user creation and retrieval endpoints work correctly
+2. **Test Authentication Endpoints** - Verify Better Auth endpoints work correctly
+3. **User Registration/Login** - Test user registration and login flows
+4. **Session Management** - Verify session creation and management
+5. **API Documentation** - Test OpenAPI plugin functionality
 
 ### Future Enhancements
 - Multi-provider authentication (OAuth, social login)
@@ -262,20 +348,20 @@ interface CloudflareBindings {
 
 ### Database Issues
 - Ensure D1 database is created in Cloudflare dashboard
-- Run migrations before starting development: `npm run db:migrate:local`
+- Run migrations before starting development: `bun run db:migrate:local`
 - Check database binding in wrangler.jsonc
 - Verify migration files exist in drizzle/migrations directory
-- Test database connectivity with `/users` and `/add-users` endpoints
+- Test database connectivity with Better Auth endpoints
 
 ### Development Issues
 - Clear .wrangler cache if experiencing issues
-- Regenerate types with `npm run cf-typegen`
+- Regenerate types with `bun run cf-typegen`
 - Check TypeScript configuration for path resolution
 - Ensure drizzle.config.ts has correct database credentials for production
 
 ### Deployment Issues
 - Verify database ID in wrangler.jsonc
-- Ensure all migrations are applied to production: `npm run db:migrate:prod`
+- Ensure all migrations are applied to production: `bun run db:migrate:prod`
 - Check Cloudflare Workers limits and quotas
 - Test API endpoints after deployment to ensure database connectivity
 
@@ -283,5 +369,5 @@ interface CloudflareBindings {
 ---
 
 **Last Updated:** January 2025  
-**Project Version:** Database integration and API endpoints  
+**Project Version:** Better Auth integration complete  
 **Maintainer:** Development Team
